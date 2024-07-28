@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "mq"
 version = "0.1.0"
-description = "PBS Queue Helper"
+description = "HPC Queue Helper"
 authors = ["Alexius Wadell <awadell@gmail.com>"]
 readme = "README.md"
 
