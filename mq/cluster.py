@@ -11,6 +11,7 @@ from typing import Iterable, Optional
 class Job:
     id: str
     name: str
+    user: str
     status: str
     nodes: Optional[list[str]]
     queue: str
@@ -84,9 +85,10 @@ class Slurm(Cluster):
             ".jobs[] | { "
             "id: .job_id, "
             "name: .name, "
+            "user: .user_name, "
             "state: .job_state[0]?, "
             "queue: .partition, "
-            "nodes: .job_resources.allocated_nodes[]?.nodename, "
+            "nodes: ( .job_resources.allocated_nodes | .[0]?.nodename ) , "
             "host: .batch_host, "
             "stdout: .standard_output, "
             "}"
@@ -95,6 +97,7 @@ class Slurm(Cluster):
             yield Job(
                 id=job["id"],
                 name=job["name"],
+                user=job["user"],
                 status=job["state"],
                 nodes=job["nodes"],
                 queue=job["queue"],

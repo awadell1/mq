@@ -92,7 +92,10 @@ def status(ctx: typer.Context):
     table.add_column("host", width=16)
 
     manager = Cluster.get_cluster_manager()
-    for job in manager.get_jobs():
+    for job in filter(
+        lambda job: job.status in ["PENDING", "RUNNING", "COMPLETING"],
+        manager.get_jobs(),
+    ):
         table.add_row(
             f"{job.id}",
             job.name,
