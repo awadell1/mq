@@ -4,7 +4,27 @@ from abc import abstractmethod
 import jq
 from os import getlogin
 from shutil import which
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Union
+from enum import StrEnum, auto
+
+
+class Status(StrEnum):
+    PENDING = auto()
+    RUNNING = auto()
+    COMPLETING = auto()
+    COMPLETED = auto()
+    FAILED = auto()
+    OTHER = auto()
+
+    def __dict__(self):
+        print(self)
+        return self.name
+
+    def __call__(cls, value, **kwargs):
+        return super()(value.lower(), **kwargs)
+
+
+ACTIVE_JOB_STATES = [Status.PENDING, Status.RUNNING, Status.COMPLETING]
 
 
 @dataclass
@@ -12,7 +32,7 @@ class Job:
     id: str
     name: str
     user: str
-    status: str
+    status: Status
     nodes: Optional[list[str]]
     queue: str
     host: Optional[str]
@@ -33,6 +53,19 @@ class Cluster:
     def detect_cluster() -> bool:
         """Return True if this cluster is present on the machine"""
         raise NotImplementedError()
+
+    def job_status(self, jobid: Union[Job, str]) -> Status:
+        id = jobid.id if isinstance(jobid, Job) else jobid
+        if job := next(filter(lambda job: job.id == id, self.get_jobs()), None):
+            return job.status
+        raise RuntimeError("No such job", id)
+
+    @staticmethod
+    def norm_status(status: str) -> Status:
+        try:
+            return Status(status.lower())
+        except ValueError:
+            return Status.OTHER
 
     @staticmethod
     def get_cluster_manager() -> "Cluster":
@@ -98,7 +131,7 @@ class Slurm(Cluster):
                 id=job["id"],
                 name=job["name"],
                 user=job["user"],
-                status=job["state"],
+                status=self.norm_status(job["state"]),
                 nodes=job["nodes"],
                 queue=job["queue"],
                 host=job["host"],

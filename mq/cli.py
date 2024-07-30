@@ -1,7 +1,6 @@
 import json
 import os
 import shutil
-import subprocess
 import time
 from collections import deque
 from sys import stdout
@@ -12,7 +11,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from .cluster import Cluster
+from .cluster import Cluster, Status, ACTIVE_JOB_STATES
 
 cli = typer.Typer(rich_markup_mode="markdown")
 
@@ -50,23 +49,25 @@ def cat(job_id: Optional[str] = typer.Argument(default="last")):
 @cli.command()
 def tail(
     job_id: str = typer.Argument(default="last"),
-    watch: bool = typer.Option(False),
+    watch: bool = typer.Option(True),
     n: int = typer.Option(20, "--lines", "-n", help="number of lines to display"),
 ):
     """Display the last `n` lines of a job's stdout"""
     manager = Cluster.get_cluster_manager()
     jobs = filter_jobs(manager.get_jobs(), job_id)
+    job = jobs[0]
 
-    while True:
+    while (state := manager.job_status(job)) in ACTIVE_JOB_STATES:
         if watch:
             os.system("cls" if os.name == "nt" else "clear")
-            print(time.asctime())
+            print(f"{time.asctime()} - {job.id} ({state})")
 
         for job in jobs:
             if job_output := job.stdout:
-                with open(job_output, "r") as fid:
-                    job_tail = deque(fid, n)
-                stdout.write("".join(job_tail))
+                if os.path.isfile(job_output):
+                    with open(job_output, "r") as fid:
+                        job_tail = deque(fid, n)
+                    stdout.write("".join(job_tail))
 
         if not watch:
             break
@@ -93,7 +94,7 @@ def status(ctx: typer.Context):
 
     manager = Cluster.get_cluster_manager()
     for job in filter(
-        lambda job: job.status in ["PENDING", "RUNNING", "COMPLETING"],
+        lambda job: job.status in ACTIVE_JOB_STATES,
         manager.get_jobs(),
     ):
         table.add_row(
