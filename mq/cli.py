@@ -54,24 +54,33 @@ def tail(
 ):
     """Display the last `n` lines of a job's stdout"""
     manager = Cluster.get_cluster_manager()
-    jobs = filter_jobs(manager.get_jobs(), job_id)
-    job = jobs[0]
+    jobs = list(filter_jobs(manager.get_jobs(), job_id))
 
-    while (state := manager.job_status(job)) in ACTIVE_JOB_STATES:
-        if watch:
-            os.system("cls" if os.name == "nt" else "clear")
-            print(f"{time.asctime()} - {job.id} ({state})")
-
-        for job in jobs:
-            if job_output := job.stdout:
-                if os.path.isfile(job_output):
-                    with open(job_output, "r") as fid:
-                        job_tail = deque(fid, n)
-                    stdout.write("".join(job_tail))
+    while jobs:
+        for idx, job in enumerate(list(jobs)):
+            status = _job_tail(manager, job, n, clear=idx == 0)
+            print("\n")
+            if status not in ACTIVE_JOB_STATES:
+                jobs.remove(job)
 
         if not watch:
             break
         time.sleep(1)
+
+
+def _job_tail(manager, job, n, clear=False):
+    status = manager.job_status(job)
+    if clear:
+        os.system("cls" if os.name == "nt" else "clear")
+    print(f"{time.asctime()} - {job.id} ({status})")
+
+    if job_output := job.stdout:
+        if os.path.isfile(job_output):
+            with open(job_output, "r") as fid:
+                job_tail = deque(fid, n)
+            stdout.write("".join(job_tail))
+
+    return status
 
 
 @cli.callback(invoke_without_command=True)
