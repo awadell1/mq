@@ -97,13 +97,18 @@ def create_tail_grid(lines, manager, jobs):
     # Count active jobs
     job_state = {}
     n_active = 0
+    n_pending = 0
     keep_going = False
     for job in jobs:
         state = manager.job_status(job)
         job_state[job.id] = state
         n_active += 1 if state in tail_states else 0
+        n_pending += 1 if state == Status.PENDING else 0
         keep_going = keep_going or state in ACTIVE_JOB_STATES
     lines_per_job = lines // max(n_active, 1)
+
+    if n_pending > 0:
+        grid.title += f" ({n_pending:d} pending)"
 
     hg = rich.highlighter.ReprHighlighter()
 
