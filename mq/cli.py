@@ -8,6 +8,8 @@ from typing import Optional
 
 import rich
 import typer
+from rich.live import Live
+from rich.panel import Panel
 from rich.console import Console
 from rich.table import Table
 
@@ -61,33 +63,47 @@ def tail(
     manager = Cluster.get_cluster_manager()
     jobs = list(filter_jobs(manager.get_jobs(), job_id))
     console = Console(soft_wrap=False)
+    grid = Table.grid()
 
-    while jobs:
-        n_per_job = (n - 5) // len(jobs)
-        for idx, job in enumerate(list(jobs)):
-            status = _job_tail(console, manager, job, n_per_job, clear=idx == 0)
-            if status not in ACTIVE_JOB_STATES:
-                jobs.remove(job)
-
-        if not watch:
-            break
-        time.sleep(1)
+    with Live(grid, transient=True) as live:
+        while True:
+            live.update(
+                create_tail_grid(console.size.height, manager, jobs), refresh=True
+            )
+            time.sleep(5)
 
 
-def _job_tail(console, manager, job, n, clear=False):
-    status = manager.job_status(job)
-    if clear:
-        os.system("cls" if os.name == "nt" else "clear")
-    console.rule(f"{time.asctime()} - {job.id} ({status})")
+def create_tail_grid(lines, manager, jobs):
+    lines_per_job = lines // len(jobs)
+    grid = Table.grid()
+    grid.title = f"{time.asctime()}"
+    grid.highlight = True
+    for job in list(jobs):
+        status = manager.job_status(job)
+        if status in ACTIVE_JOB_STATES:
+            grid.add_row(
+                Panel(
+                    rich.text.Text(
+                        _job_tail(manager, job, lines) or "",
+                        overflow="ellipse",
+                        no_wrap=True,
+                    ),
+                    title=f"{job.id} - {job.status} - {job.host}",
+                    highlight=True,
+                    height=lines_per_job,
+                )
+            )
 
+    return grid
+
+
+def _job_tail(manager, job, lines):
     if job_output := job.stdout:
         if os.path.isfile(job_output):
             with open(job_output, "r") as fid:
-                job_tail = deque(fid, n)
-            output = "".join(job_tail)
-            console.print(output, no_wrap=True, overflow="ellipse")
+                job_tail = deque(fid, lines)
 
-    return status
+            return "".join(job_tail)
 
 
 @cli.callback(invoke_without_command=True)
