@@ -50,16 +50,22 @@ def cat(job_id: Optional[str] = typer.Argument(default="last")):
 def tail(
     job_id: str = typer.Argument(default="last"),
     watch: bool = typer.Option(True),
-    n: int = typer.Option(20, "--lines", "-n", help="number of lines to display"),
+    n: int = typer.Option(
+        shutil.get_terminal_size().lines,
+        "--lines",
+        "-n",
+        help="number of lines to display",
+    ),
 ):
     """Display the last `n` lines of a job's stdout"""
     manager = Cluster.get_cluster_manager()
     jobs = list(filter_jobs(manager.get_jobs(), job_id))
+    console = Console(soft_wrap=False)
 
     while jobs:
+        n_per_job = (n - 5) // len(jobs)
         for idx, job in enumerate(list(jobs)):
-            status = _job_tail(manager, job, n, clear=idx == 0)
-            print("\n")
+            status = _job_tail(console, manager, job, n_per_job, clear=idx == 0)
             if status not in ACTIVE_JOB_STATES:
                 jobs.remove(job)
 
@@ -68,17 +74,18 @@ def tail(
         time.sleep(1)
 
 
-def _job_tail(manager, job, n, clear=False):
+def _job_tail(console, manager, job, n, clear=False):
     status = manager.job_status(job)
     if clear:
         os.system("cls" if os.name == "nt" else "clear")
-    print(f"{time.asctime()} - {job.id} ({status})")
+    console.rule(f"{time.asctime()} - {job.id} ({status})")
 
     if job_output := job.stdout:
         if os.path.isfile(job_output):
             with open(job_output, "r") as fid:
                 job_tail = deque(fid, n)
-            stdout.write("".join(job_tail))
+            output = "".join(job_tail)
+            console.print(output, no_wrap=True, overflow="ellipse")
 
     return status
 
