@@ -42,7 +42,7 @@ class Job:
     @property
     def node_count(self) -> Optional[int]:
         if self.nodes:
-            len(self.nodes)
+            return len(self.nodes)
 
     @property
     def host(self) -> Optional[str]:
@@ -128,12 +128,13 @@ class PBS(Cluster):
             }"""
         ).input_text(out.stdout)
         for job in jobs:
+            job["user"] = job["user"].partition("@")[0]
             if user and job["user"] != getlogin():
                 continue
             yield Job(
                 id=job["id"].partition(".")[0],
                 name=job["name"],
-                user=job["user"].partition("@")[0],
+                user=job["user"],
                 status=self.norm_status(job["state"]),
                 queue=job["queue"],
                 nodes=(
