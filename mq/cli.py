@@ -50,7 +50,7 @@ def cat(job_id: Optional[str] = typer.Argument(default="last")):
 
 @cli.command()
 def tail(
-    job_id: str = typer.Argument(default="last"),
+    job_id: str = typer.Argument(default="all"),
     watch: bool = typer.Option(True),
     n: int = typer.Option(
         shutil.get_terminal_size().lines,
@@ -66,21 +66,37 @@ def tail(
     grid = Table.grid()
 
     with Live(grid, transient=True) as live:
-        while True:
+        done = False
+        while not done:
+            grid, done = create_tail_grid(console.size.height - 2, manager, jobs)
             live.update(
-                create_tail_grid(console.size.height, manager, jobs), refresh=True
+                grid,
+                refresh=True,
             )
             time.sleep(5)
 
 
 def create_tail_grid(lines, manager, jobs):
-    lines_per_job = lines // len(jobs)
     grid = Table.grid()
     grid.title = f"{time.asctime()}"
     grid.highlight = True
+
+    tail_states = [Status.RUNNING, Status.COMPLETING]
+
+    # Count active jobs
+    job_state = {}
+    n_active = 0
+    keep_going = False
+    for job in jobs:
+        state = manager.job_status(job)
+        job_state[job.id] = state
+        n_active += 1 if state in tail_states else 0
+        keep_going = keep_going or state in ACTIVE_JOB_STATES
+    lines_per_job = lines // n_active
+
     for job in list(jobs):
-        status = manager.job_status(job)
-        if status in ACTIVE_JOB_STATES:
+        status = job_state[job.id]
+        if status in tail_states:
             grid.add_row(
                 Panel(
                     rich.text.Text(
@@ -94,7 +110,7 @@ def create_tail_grid(lines, manager, jobs):
                 )
             )
 
-    return grid
+    return grid, not keep_going
 
 
 def _job_tail(manager, job, lines):
