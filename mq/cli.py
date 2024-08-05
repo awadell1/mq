@@ -57,7 +57,7 @@ def cat(job_id: Optional[str] = typer.Argument(default="last")):
 
 @cli.command()
 def tail(
-    job_id: str = typer.Argument(default="last"),
+    job_id: str = typer.Argument(default="all"),
     watch: bool = typer.Option(True),
     n: int = typer.Option(
         shutil.get_terminal_size().lines,
@@ -103,7 +103,7 @@ def create_tail_grid(lines, manager, jobs):
         job_state[job.id] = state
         n_active += 1 if state in tail_states else 0
         keep_going = keep_going or state in ACTIVE_JOB_STATES
-    lines_per_job = lines // n_active
+    lines_per_job = lines // max(n_active, 1)
 
     hg = rich.highlighter.ReprHighlighter()
 
