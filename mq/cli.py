@@ -19,8 +19,15 @@ cli = typer.Typer(rich_markup_mode="markdown")
 
 
 @cli.command()
-def raw():
-    """User job information in JSON"""
+def raw(
+    user: bool = typer.Option(
+        True, help="Only return job information for the current user"
+    )
+):
+    """JSON formatted Job information
+
+    > Warning: Exact content may change without notice
+    """
     manager = Cluster.get_cluster_manager()
     jobs = manager.get_jobs()
     json.dump(list(jobs), stdout, default=lambda o: o.__dict__)
@@ -38,7 +45,7 @@ def filter_jobs(jobs, job_id):
 
 @cli.command()
 def cat(job_id: Optional[str] = typer.Argument(default="last")):
-    """cat a jobs output"""
+    """Prints a job's standard output"""
     manager = Cluster.get_cluster_manager()
     jobs = filter_jobs(manager.get_jobs(), job_id)
 
@@ -59,7 +66,11 @@ def tail(
         help="number of lines to display",
     ),
 ):
-    """Display the last `n` lines of a job's stdout"""
+    """Prints the tail of a job's standard output
+
+    By default will watch the output off all active (Pending, Running or Completing) jobs,
+    but can be configured to watch a subset of jobs or only print the tail once.
+    """
     manager = Cluster.get_cluster_manager()
     jobs = list(filter_jobs(manager.get_jobs(), job_id))
     console = Console(soft_wrap=False)
@@ -128,7 +139,10 @@ def _job_tail(manager, job, lines):
 
 @cli.callback(invoke_without_command=True)
 def status(ctx: typer.Context):
-    """A nicer qstat/squeue for the current user"""
+    """mq: A pretty queue for HPC schedulers
+
+    Plus a bundle of UI/CLI tools for monitoring job progress/status
+    """
 
     # Bail if actually running a sub-command
     if ctx.invoked_subcommand is not None:
