@@ -1,11 +1,12 @@
-from dataclasses import dataclass
 import subprocess
 from abc import abstractmethod
-import jq
+from dataclasses import dataclass
+from enum import StrEnum, auto
 from os import getlogin
 from shutil import which
 from typing import Iterable, Optional, Union
-from enum import StrEnum, auto
+
+import jq
 
 
 class Status(StrEnum):
@@ -33,15 +34,27 @@ class Job:
     name: str
     user: str
     status: Status
-    nodes: Optional[list[str]]
     queue: str
-    host: Optional[str]
-    stdout: Optional[str]
+    nodes: Optional[list[str]] = None
+    _host: Optional[str] = None
+    stdout: Optional[str] = None
 
     @property
     def node_count(self) -> Optional[int]:
         if self.nodes:
             len(self.nodes)
+
+    @property
+    def host(self) -> Optional[str]:
+        if self._host:
+            return self._host
+        if self.nodes:
+            return self.nodes[0]
+        return None
+
+    @host.setter
+    def host(self, host):
+        self._host = host
 
 
 class Cluster:
@@ -83,19 +96,57 @@ class PBS(Cluster):
     def detect_cluster():
         return which("qstat") is not None
 
+    @staticmethod
+    def norm_status(status: str) -> Status:
+        if status == "R":
+            return Status.RUNNING
+        elif status == "Q":
+            return Status.PENDING
+        elif status == "X":
+            return Status.COMPLETING
+        elif status == "F":
+            return Status.COMPLETED
+        else:
+            return Cluster.norm_status(status)
+
     def get_jobs(self, user=True) -> Iterable[Job]:
         out = subprocess.run(
-            ["-f", "-F", "json"],
-            executable=self.qstat,
+            [self.qstat, "-f", "-F", "json"],
             capture_output=True,
             check=True,
             encoding="utf-8",
         )
-
-        JQ_USER_JOBS = jq.compile(
-            f'.Jobs | [to_entries[] | {{jobid: .key}} + .value][] | select(.Job_Owner | startswith("{getlogin()}@"))'
-        )
-        return JQ_USER_JOBS.input_text(out.stdout).all()
+        jobs: Iterable[dict[str, str]] = jq.compile(
+            """.Jobs | to_entries[] | {
+                id: .key,
+                name: .value.Job_Name,
+                user: .value.Job_Owner,
+                state: .value.job_state,
+                queue: .value.queue,
+                nodes: .value.exec_host?,
+                stdout: .value.Output_Path?,
+            }"""
+        ).input_text(out.stdout)
+        for job in jobs:
+            if user and job["user"] != getlogin():
+                continue
+            yield Job(
+                id=job["id"].partition(".")[0],
+                name=job["name"],
+                user=job["user"].partition("@")[0],
+                status=self.norm_status(job["state"]),
+                queue=job["queue"],
+                nodes=(
+                    [n.partition("/")[0] for n in job["nodes"].split("+")]
+                    if job["nodes"]
+                    else None
+                ),
+                stdout=(
+                    (job["stdout"].partition(":")[2] or job["stdout"])
+                    if job["stdout"]
+                    else None
+                ),
+            )
 
 
 class Slurm(Cluster):
